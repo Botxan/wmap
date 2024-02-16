@@ -1,0 +1,46 @@
+version: "3.8"
+services:
+    # Mysql database container
+    db:
+        image: mysql
+        container_name: symfony-mysql-container
+        restart: always
+        volumes:
+            - db-data:/var/lib/mysql
+        environment:
+            MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+        networks:
+            - symfony-network
+
+    # phpmyadmin container
+    phpmyadmin:
+        image: phpmyadmin
+        container_name: symfony-phpmyadmin-container
+        restart: always
+        depends_on:
+            - db
+        ports:
+            - 9001:80
+        environment:
+            PMA_HOST: db
+        networks:
+            - symfony-network
+
+    # Symfony apache project container
+    www:
+        build: docker/php
+        container_name: symfony-container
+        ports:
+          - "8001:80"
+        volumes:
+            - ./docker/php/vhosts:/etc/apache2/sites-enabled
+            - ./:/var/www
+        restart: always
+        networks:
+            - symfony-network 
+
+networks:
+    symfony-network:
+
+volumes:
+    db-data:

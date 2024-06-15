@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 export TERM=xterm-color
 
 if [ ! `which composer` ]; then

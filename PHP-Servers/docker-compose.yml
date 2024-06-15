@@ -1,0 +1,19 @@
+services:
+  web:
+    image: bench/apache:latest
+    build: 
+      context: .
+      dockerfile: .docker/apache.dockerfile
+    volumes:
+      - .:/var/www/html/wmap
+    ports:
+      - "8080:80"
+    environment:
+      TERM: xterm-color
+      PORT: 80
+    networks:
+      - webnet
+
+networks:
+  webnet:
+

@@ -16,9 +16,10 @@ if [ ! `which curl` ]; then
     exit 1;
 fi
 
-
 . ./config
 . ./base/option_target.sh
+
+echo "Target frameworks: $param_targets"
 
 for fw in $param_targets
 do
@@ -26,8 +27,15 @@ do
         echo -e "\n\n"
         echo "/------- $fw: setting up -------/"
         cd "$fw"
-        . "_wmap/setup.sh"
+        if [ -f "_wmap/setup.sh" ]; then
+            echo "Running setup for $fw"
+            . "_wmap/setup.sh"
+        else
+            echo "Setup script for $fw not found"
+        fi
         cd ..
+    else
+        echo "Directory $fw does not exist"
     fi
 done
 

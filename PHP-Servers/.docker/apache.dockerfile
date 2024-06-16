@@ -1,23 +1,25 @@
 FROM php:8.3-apache
 
-RUN apt-get update && apt-get install -y libicu-dev curl git unzip && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libicu-dev libzip-dev curl git unzip zip && rm -rf /var/lib/apt/lists/*
+
+ENV COMPOSER_ALLOW_SUPERUSER 1
 
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 RUN mkdir /var/www/html/wmap
 
 # Need it in a lot of frameworks
-RUN docker-php-ext-install intl
+RUN docker-php-ext-install intl zip
 
 # Optional opcache (recommended)
 # RUN docker-php-ext-install opcache
 
-COPY . /app
-WORKDIR /app
+COPY . /var/www/html/wmap
+WORKDIR /var/www/html/wmap
 
 RUN chmod +x setup.sh base/option_target.sh
 
-RUN ./setup.sh
+RUN yes | ./setup.sh
 
 ENV PORT 80
 ENTRYPOINT []

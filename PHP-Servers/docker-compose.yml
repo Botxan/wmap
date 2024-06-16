@@ -4,8 +4,6 @@ services:
     build: 
       context: .
       dockerfile: .docker/apache.dockerfile
-    volumes:
-      - .:/var/www/html/wmap
     ports:
       - "8080:80"
     environment:

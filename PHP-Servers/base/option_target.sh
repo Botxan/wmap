@@ -13,7 +13,7 @@ function showHelp()
 
     Optional Arguments:
         -h, --help                  Show this help message and exit
-        -t, --target                Specify your target framework/s for benchmarking
+        -t, --target                Specify your target framework/s
                                     Separate them via space.
 
 HEREDOC

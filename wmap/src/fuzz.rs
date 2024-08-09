@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::cmp;
 
 pub struct Fuzzer {
     pub methods: Vec<String>,
@@ -74,57 +74,100 @@ impl Fuzzer {
     pub fn fuzz_request_target(&self, request_target: &str) -> Vec<String> {
         let mut mutated_request_targets = Vec::new();
         let path_len = request_target.len();
-        /*
-        // 1. Basic structure manipulation
+        let max_len = cmp::min(path_len, 5);
 
-        // 1.1 Suppress chars
-        for i in 0..path_len {
+        // 1. Basic structure manipulation
+        // Suppress chars
+        for i in 0..max_len {
             let suppressed = self.suppress_char(request_target, i).unwrap();
             mutated_request_targets.push(suppressed);
         }
 
-        // 1.2. Interchange chars
+        // Interchange chars
         if path_len > 1 {
-            for i in 0..path_len {
-                for j in i + 1..path_len {
+            for i in 0..max_len {
+                for j in i + 1..max_len {
                     let swapped = self.swap_chars(request_target, i, j);
                     mutated_request_targets.push(swapped);
                 }
             }
         }
 
-        // 1.3. Add chars
+        // Add chars
         let chars = vec!['/', 'z', '#'];
         let added = self.add_chars(request_target, chars);
         mutated_request_targets.extend(added);
-        */
 
-        // 2. Path manipulation
-        // 2.1 Alter path separator
+        // Path manipulation
+        // Alter path separator
         mutated_request_targets.push(request_target.replace("/", "\\"));
 
-        // 2.2 Truncate path
+        // Truncate path
         if request_target.contains('/') {
             let truncated = request_target.rsplitn(2, '/').last().unwrap_or("");
             mutated_request_targets.push(format!("/{}", truncated));
         }
 
-        // 2.3 Path traversal sequences
+        // Path traversal sequences
         mutated_request_targets.push(request_target.replace("/", "/../"));
         mutated_request_targets.push(request_target.replace("/", "/../../../../../../../../../../../../../../../../"));
 
-        // 2.4 Duplicate  segments
+        // Duplicate  segments
         mutated_request_targets.push(request_target.repeat(2));
 
-        // 2.5 Overlong segments
+        // Overlong segments
         if let Some(first_segment) = request_target.split('/').nth(1) {
             let overlong_segment = "too-long-".repeat(50);
             let mutated_target = request_target.replacen(first_segment, &overlong_segment, 1);
             mutated_request_targets.push(mutated_target);
         }
 
-        // 2.6 Slash padding
+        // Slash padding
         mutated_request_targets.push(request_target.replace("/", "////"));
+
+        // 3. Query string mutations
+        let (path, query) = request_target.split_once('?').unwrap_or((request_target, ""));
+        if !query.is_empty() {
+            // Duplicate query parameter
+            mutated_request_targets.push(format!("{}?{}&{}", path, query, query));
+
+            // Add unexpected query parameter
+            mutated_request_targets.push(format!("{}?{}&unexpected=1", path, query));
+
+            // Empty query parameter
+            mutated_request_targets.push(format!("{}?{}&param=", path, query));
+
+            // Large query parameter values
+            mutated_request_targets.push(format!("{}?{}={}", path, query, "a".repeat(1024)));
+
+            // Special characters in query parameters
+            mutated_request_targets.push(format!("{}?{}=va!ue", path, query));
+            mutated_request_targets.push(format!("{}?{}=<script>alert(1)</script>", path, query));
+
+            // Malformed query string
+            mutated_request_targets.push(format!("{}?{}?otherparam=othervalue", path, query));
+            mutated_request_targets.push(format!("{}?{}&", path, query));
+        }
+
+        // 4. Fragment mutations
+        if let Some((path, _fragment)) = request_target.split_once('#') {
+            // Alter or add fragment
+            mutated_request_targets.push(format!("{}#fragme@nt", path));
+            mutated_request_targets.push(format!("{}#", path));
+            mutated_request_targets.push(format!("{}#{}", path, "longfragment".repeat(1024)));
+        }
+
+        // 5. Encoding and escaping mutations
+        // Slash encoding
+        mutated_request_targets.push(request_target.replace("/", "%2F"));
+
+        if !query.is_empty() {
+            // Double URL encoding
+            mutated_request_targets.push(format!("{}?%25{}", path, query));
+
+            // Invalid or incomplete URL encoding
+            mutated_request_targets.push(format!("{}?%G4{}", path, query));
+        }
 
         mutated_request_targets
     }

@@ -1,4 +1,6 @@
-use std::cmp;
+use crate::http_client;
+use std::{cmp, collections::BTreeMap};
+use url::Url;
 
 pub struct Fuzzer {
     pub methods: Vec<String>,
@@ -216,6 +218,130 @@ impl Fuzzer {
         }
 
         mutated_versions
+    }
+
+    pub fn fuzz_headers(&self, base_url: &str) -> Vec<BTreeMap<String, String>> {
+        let normalized_url = http_client::normalize_url(base_url);
+        let parsed_url = Url::parse(&normalized_url).expect("Invalid URL format");
+        let domain = parsed_url.host_str().unwrap_or("");
+
+        let base_headers = http_client::get_default_headers(domain);
+
+        let mut mutated_headers = Vec::new();
+
+        // 0. Default headers
+        mutated_headers.push(base_headers.clone());
+
+        // 1. User-Agent variations
+        let user_agents = vec![
+            "",                                                                               // Empty
+            "curl/7.68.0",                                                                    // Command line tool
+            "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)",                             // Old browser
+            "Googlebot/2.1 (+http://www.google.com/bot.html)",                                // Web crawler
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0", // Another modern browser
+            "UnknownAgent/1.0",                                                               // Non-standard agent
+        ];
+
+        for user_agent in user_agents {
+            let mut headers = base_headers.clone();
+            headers.insert("User-Agent".to_string(), user_agent.to_string());
+            mutated_headers.push(headers);
+        }
+
+        // 2. Referer manipulations
+        let referer_non_existent_page = format!("{}/non-existent-page", &normalized_url);
+        let referer_https = format!("https://{}", domain);
+
+        let referers = vec![
+            "",                         // Empty
+            "http://malicious.com",     // Malicious referer
+            &referer_non_existent_page, // Non-existent page
+            &referer_https,             // HTTPS version of the site
+        ];
+
+        for referer in referers {
+            let mut headers = base_headers.clone();
+            headers.insert("Referer".to_string(), referer.to_string());
+            mutated_headers.push(headers);
+        }
+
+        // 3. Content-Type manipulations
+        let content_types = vec![
+            "application/json",                                  // JSON content
+            "multipart/form-data",                               // Form data with files
+            "text/plain",                                        // Plain text
+            "application/xml",                                   // XML content
+            "application/x-www-form-urlencoded; charset=UTF-16", // Different charset
+        ];
+
+        for content_type in content_types {
+            let mut headers = base_headers.clone();
+            headers.insert("Content-Type".to_string(), content_type.to_string());
+            mutated_headers.push(headers);
+        }
+
+        // 4. Host manipulations
+        let host_custom_port = format!("{}:8080", domain);
+        let host_subdomain = format!("sub.{}", domain);
+
+        let hosts = vec![
+            "localhost",       // Localhost
+            "127.0.0.1",       // Localhost IP
+            &host_custom_port, // Custom port
+            domain,            // Base domain
+            &host_subdomain,   // Subdomain
+        ];
+
+        for host in hosts {
+            let mut headers = base_headers.clone();
+            headers.insert("Host".to_string(), host.to_string());
+            mutated_headers.push(headers);
+        }
+
+        // 5. X-Forwarded-For manipulations
+        let x_forwarded_for_values = vec![
+            "",                              // Empty
+            "192.168.1.1",                   // Private IP address
+            "10.0.0.1",                      // Another private IP address
+            "203.0.113.195, 198.51.100.101", // Multiple IP addresses
+            "127.0.0.1",                     // Localhost IP
+        ];
+
+        for x_forwarded_for in x_forwarded_for_values {
+            let mut headers = base_headers.clone();
+            headers.insert("X-Forwarded-For".to_string(), x_forwarded_for.to_string());
+            mutated_headers.push(headers);
+        }
+
+        // 6. Cookie manipulations
+        let cookies = vec![
+            "",                                       // Empty
+            "PHPSESSID=abcdef123456",                 // Valid session ID
+            "PHPSESSID=; path=/; HttpOnly",           // Empty session ID
+            "malicious=1; PHPSESSID=123456789abcdef", // Additional malicious cookie
+        ];
+
+        for cookie in cookies {
+            let mut headers = base_headers.clone();
+            headers.insert("Cookie".to_string(), cookie.to_string());
+            mutated_headers.push(headers);
+        }
+
+        // 7. Authorization manipulations
+        let authorizations = vec![
+            "",                           // Empty
+            "Basic dXNlcjpwYXNzd29yZA==", // Basic auth with user:password
+            "Bearer somejwttoken",        // Bearer token
+            "Negotiate YII=",             // Negotiate (Kerberos) token
+        ];
+
+        for authorization in authorizations {
+            let mut headers = base_headers.clone();
+            headers.insert("Authorization".to_string(), authorization.to_string());
+            mutated_headers.push(headers);
+        }
+
+        mutated_headers
     }
 
     fn suppress_char(&self, input: &str, i: usize) -> Option<String> {

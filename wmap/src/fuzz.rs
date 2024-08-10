@@ -3,11 +3,12 @@ use std::cmp;
 pub struct Fuzzer {
     pub methods: Vec<String>,
     pub encoding: String,
+    pub request_count: u32,
 }
 
 impl Fuzzer {
-    pub fn new(methods: Vec<String>, encoding: String) -> Self {
-        Self { methods, encoding }
+    pub fn new(methods: Vec<String>, encoding: String, request_count: u32) -> Self {
+        Self { methods, encoding, request_count }
     }
 
     pub fn fuzz_http_method(&self, method: &str) -> Vec<String> {
@@ -172,14 +173,53 @@ impl Fuzzer {
         mutated_request_targets
     }
 
+    pub fn fuzz_http_version(&self) -> Vec<String> {
+        let mut mutated_versions = Vec::new();
+
+        // 1. Valid but uncommon versions
+        let uncommon_versions = vec!["HTTP/0.9", "HTTP/2.0", "HTTP/3.0"];
+        for v in uncommon_versions {
+            mutated_versions.push(v.to_string());
+        }
+
+        // 2. Malformed versions
+        let malformed_versions = vec![
+            "HTTP/1.",    // Incomplete version
+            "HTTP/1.2.3", // Extra dot
+            "HTT/1.1",    // Typo in protocol
+            "HTTP/1.1 ",  // Trailing space
+            "HTTP/",      // Empty version number
+            "",           // Empty version
+        ];
+        for v in malformed_versions {
+            mutated_versions.push(v.to_string());
+        }
+
+        // 3. Unexpected characters
+        let unexpected_char_versions = vec!["HTTP/1.1#", "HTTP/1.1!", "HTTP/1.1@"];
+        for v in unexpected_char_versions {
+            mutated_versions.push(v.to_string());
+        }
+
+        // 5. Overlong version
+        let overlong_version = format!("HTTP/1.1{}", "A".repeat(1024));
+        mutated_versions.push(overlong_version);
+
+        // 6. Encoding mutations
+        let encoded_versions = vec![
+            "HTTP%2F1.1",       // Slash encoded
+            "HTTP%2F1%2E1",     // Slash and dot encoded
+            "%48%54%54%50/1.1", // Full version encoded
+        ];
+        for v in encoded_versions {
+            mutated_versions.push(v.to_string());
+        }
+
+        mutated_versions
+    }
+
     fn suppress_char(&self, input: &str, i: usize) -> Option<String> {
-        (input.len() > 1).then(|| {
-            input
-                .chars()
-                .enumerate()
-                .filter_map(|(j, c)| if j != i { Some(c) } else { None })
-                .collect::<String>()
-        })
+        (input.len() > 1).then(|| input.chars().enumerate().filter_map(|(j, c)| if j != i { Some(c) } else { None }).collect::<String>())
     }
 
     fn swap_chars(&self, method: &str, i: usize, j: usize) -> String {
@@ -220,13 +260,7 @@ impl Fuzzer {
         input
             .chars()
             .enumerate()
-            .map(|(i, c)| {
-                if i % 2 == 0 {
-                    c.to_ascii_lowercase()
-                } else {
-                    c.to_ascii_uppercase()
-                }
-            })
+            .map(|(i, c)| if i % 2 == 0 { c.to_ascii_lowercase() } else { c.to_ascii_uppercase() })
             .collect()
     }
 

@@ -19,8 +19,6 @@ pub fn send_request(target_url: &str, method: &str, path: &str, version: &str, h
     // Combine request line, headers and body
     let request = format!("{}{}\r\n", request_line, headers_str);
 
-    println!("Request: {}", request);
-
     // Open a TCP stream to the server
     let mut stream = TcpStream::connect(format!("{}:{}", host, port)).expect("Failed to connect to server");
     stream.set_nodelay(true).expect("Failed to set nodelay");
@@ -42,9 +40,20 @@ pub fn send_request(target_url: &str, method: &str, path: &str, version: &str, h
     }
 
     // Parse headers and get Content-Length header if exists
-    let headers_end = response.find("\r\n\r\n").unwrap() + 4;
+    let headers_end = match response.find("\r\n\r\n") {
+        Some(index) => index + 4,
+        None => {
+            eprintln!("Error: HTTP headers not found in the response");
+            return String::new();
+        }
+    };
     headers_str = response[..headers_end].to_string();
-    let content_length = headers_str.lines().find(|&line| line.starts_with("Content-Length:")).and_then(|line| line.split(": ").nth(1)).and_then(|len| len.trim().parse::<usize>().ok()).unwrap_or(0);
+    let content_length = headers_str
+        .lines()
+        .find(|&line| line.starts_with("Content-Length:"))
+        .and_then(|line| line.split(": ").nth(1))
+        .and_then(|len| len.trim().parse::<usize>().ok())
+        .unwrap_or(0);
 
     // Read the body
     let mut body = String::new();

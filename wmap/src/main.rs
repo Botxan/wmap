@@ -17,7 +17,7 @@ fn main() {
     let url = matches.get_one::<String>("url").expect("URL is required");
     let encoding = matches.get_one::<String>("encoding").expect("Encoding is required").clone();
     let methods: Vec<String> = matches.get_many::<String>("methods").expect("Methods are required").map(|s| s.to_string()).collect();
-    let (host, request_target) = http_client::parse_url(url);
+    let (_host, request_target) = http_client::parse_url(url);
     let headers: BTreeMap<String, String> = http_client::get_default_headers(url);
 
     let mut fuzzer = Fuzzer::new(methods, encoding, 0);
@@ -46,7 +46,7 @@ fn process_requests_per_method(fuzzer: &mut Fuzzer, url: &str, request_target: &
         process_mutated_http_versions(fuzzer, method, request_target, url, headers, logger);
 
         log_print!(logger, "\n----- Header mutations -----");
-        process_mutated_headers(fuzzer, method, request_target, url, headers, logger);
+        process_mutated_headers(fuzzer, method, request_target, url, logger);
     }
 }
 
@@ -83,7 +83,7 @@ fn process_mutated_http_versions(fuzzer: &mut Fuzzer, method: &str, request_targ
     }
 }
 
-fn process_mutated_headers(fuzzer: &mut Fuzzer, method: &str, request_target: &str, url: &str, headers: &BTreeMap<String, String>, logger: &mut Logger) {
+fn process_mutated_headers(fuzzer: &mut Fuzzer, method: &str, request_target: &str, url: &str, logger: &mut Logger) {
     let mutated_headers_list = fuzzer.fuzz_headers(url);
     for mutated_headers in mutated_headers_list {
         log_print!(logger, "[Request nº{}] - Headers:", fuzzer.request_count);

@@ -31,7 +31,6 @@ pub fn send_request(target_url: &str, method: &str, path: &str, version: &str, h
     // Read the response
     let mut response = String::new();
     let mut buffer = [0; 512];
-    let mut headers_str = String::new();
 
     while stream.read(&mut buffer).expect("Error reading response") > 0 {
         response.push_str(&String::from_utf8_lossy(&buffer));

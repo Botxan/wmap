@@ -1,104 +1,161 @@
 use clap::ArgMatches;
-use std::fs::File;
-use std::io::Write;
-use std::path::Path;
+use lazy_static::lazy_static;
+use serde::Serialize;
+use std::fmt::Write as FmtWrite;
+use std::fs::OpenOptions;
+use std::io::{self, Write};
+use std::sync::Mutex;
 
 pub struct Logger {
     verbose: bool,
-    output_file: Option<File>,
+    output_file: Option<Mutex<io::BufWriter<std::fs::File>>>,
+    include_framework: bool,
+}
+
+#[derive(Serialize)]
+pub struct JSONEntry {
+    request_index: u32,
+    request: String,
+    response: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    framework: Option<String>,
 }
 
 impl Logger {
-    pub fn new(verbose: bool, output: Option<&str>) -> Logger {
-        let output_file = output.map(|path| File::create(Path::new(path)).expect("Failed to create output file"));
-        Logger { verbose, output_file }
-    }
+    pub fn init(verbose: bool, output_file: Option<&str>, include_framework: bool) {
+        let mut logger = GLOBAL_LOGGER.lock().unwrap();
+        logger.verbose = verbose;
+        logger.include_framework = include_framework;
 
-    pub fn print(&mut self, message: &str) {
-        self.print_to_target(format_args!("{}", message));
-    }
-
-    pub fn print_verbose(&mut self, message: &str) {
-        if self.verbose {
-            self.print(message);
+        if let Some(file_path) = output_file {
+            let file = OpenOptions::new().create(true).append(true).open(file_path).expect("Failed to open log file");
+            logger.output_file = Some(Mutex::new(io::BufWriter::new(file)));
         }
     }
 
-    pub fn print_args(&mut self, matches: &ArgMatches) {
-        if self.verbose {
-            self.print_formatted_args(matches);
-        }
-    }
-
-    pub fn print_format(&mut self, format: std::fmt::Arguments) {
-        self.print_to_target(format);
-    }
-
-    fn print_to_target(&mut self, format: std::fmt::Arguments) {
-        if let Some(ref mut file) = self.output_file {
-            writeln!(file, "{}", format).expect("Failed to write to output file");
+    pub fn print(&self, args: std::fmt::Arguments) {
+        let formatted = format!("{}", args);
+        if let Some(ref output_file) = self.output_file {
+            let mut writer = output_file.lock().unwrap();
+            writeln!(writer, "{}", formatted).expect("Failed to write to log file");
         } else {
-            println!("{}", format);
+            println!("{}", formatted);
         }
     }
 
-    pub fn is_verbose(&self) -> bool {
-        self.verbose
+    pub fn print_verbose(&self, args: std::fmt::Arguments) {
+        if self.verbose {
+            self.print(args);
+        }
     }
 
-    fn print_formatted_args(&mut self, matches: &clap::ArgMatches) {
-        self.print("Command line arguments:");
-
-        if let Some(url) = matches.get_one::<String>("url") {
-            self.print_format(format_args!("> URL: {}", url));
+    pub fn print_json(&self, entry: &JSONEntry) {
+        let json_entry = serde_json::to_string(entry).expect("Failed to serialize log entry");
+        if let Some(ref output_file) = self.output_file {
+            let mut writer = output_file.lock().unwrap();
+            writeln!(writer, "{}", json_entry).expect("Failed to write to log file");
         } else {
-            self.print_format(format_args!("[x] No URL provided"));
+            println!("{}", json_entry);
+        }
+    }
+
+    pub fn create_json_entry(&self, request_index: u32, request: &str, response: &str, framework: Option<&str>) -> JSONEntry {
+        JSONEntry {
+            request_index,
+            request: request.to_string(),
+            response: response.to_string(),
+            framework: if self.include_framework { framework.map(|s| s.to_string()) } else { None },
+        }
+    }
+
+    pub fn print_args(&self, matches: &ArgMatches) {
+        if !self.verbose {
+            return;
         }
 
-        if let Some(methods) = matches.get_many::<String>("methods") {
-            self.print_format(format_args!("> HTTP Methods:"));
-            for method in methods {
-                self.print_format(format_args!("  - {}", method));
+        let mut output = String::new();
+        writeln!(output, "Command line arguments:").unwrap();
+
+        for arg_id in matches.ids() {
+            let id_str = arg_id.as_str();
+
+            if matches.try_get_many::<String>(id_str).is_ok() {
+                // Single/Multiple value arg
+                if let Ok(Some(values)) = matches.try_get_many::<String>(id_str) {
+                    let values: Vec<String> = values.map(|v| v.to_string()).collect();
+                    if values.len() == 1 {
+                        writeln!(output, "  {}: {:?}", id_str, values[0]).unwrap();
+                    } else {
+                        writeln!(output, "  {}: {:?}", id_str, values).unwrap();
+                    }
+                }
+            } else if matches.get_flag(id_str) {
+                // Flag
+                writeln!(output, "  {}: true", id_str).unwrap();
+            } else {
+                writeln!(output, "  {}: false", id_str).unwrap();
             }
         }
 
-        if let Some(encoding) = matches.get_one::<String>("encoding") {
-            self.print_format(format_args!("> Encoding: {}", encoding));
-        }
-
-        if let Some(output) = matches.get_one::<String>("output") {
-            match std::fs::canonicalize(output) {
-                Ok(abs_path) => self.print_format(format_args!(
-                    "> Output file: {} (absolute path: {})",
-                    output,
-                    abs_path.display()
-                )),
-                Err(_) => self.print_format(format_args!("> Output file: {}", output)),
-            }
+        // Output handling
+        if let Some(ref output_file) = self.output_file {
+            let mut writer = output_file.lock().unwrap();
+            writeln!(writer, "{}", output).expect("Failed to write to log file");
         } else {
-            self.print_format(format_args!("[x] No output file specified."));
-        }
-
-        if matches.get_flag("verbose") {
-            self.print_format(format_args!("> Verbose mode enabled."));
-        } else {
-            self.print_format(format_args!("> Verbose mode disabled."));
+            print!("{}", output);
         }
     }
+}
+
+impl Default for Logger {
+    fn default() -> Self {
+        Logger {
+            verbose: false,
+            output_file: None,
+            include_framework: false,
+        }
+    }
+}
+
+lazy_static! {
+    pub static ref GLOBAL_LOGGER: Mutex<Logger> = Mutex::new(Logger::default());
+}
+
+#[macro_export]
+macro_rules! log_json {
+    ($count:expr, $request:expr, $response:expr $(, $framework:expr)?) => {
+        let framework: Option<String> = None;
+        $(
+            let framework = Some($framework.to_string());
+        )?
+
+        let entry = $crate::logger::GLOBAL_LOGGER.lock().unwrap().create_json_entry(
+            $count,
+            $request,
+            $response,
+            framework.as_deref()
+        );
+        $crate::logger::GLOBAL_LOGGER.lock().unwrap().print_json(&entry);
+    };
 }
 
 #[macro_export]
 macro_rules! log_print {
-    ($logger:expr, $($arg:tt)*) => {
-        $logger.print_format(format_args!($($arg)*));
-    }
+    ($($arg:tt)*) => {
+        $crate::logger::GLOBAL_LOGGER.lock().unwrap().print(format_args!($($arg)*));
+    };
 }
 
 #[macro_export]
 macro_rules! log_print_verbose {
-    ($logger:expr, $($arg:tt)*) => {
-        if $logger.is_verbose() {
-            $logger.print_format(format_args!($($arg)*));
-        }
-    }
+    ($($arg:tt)*) => {
+        $crate::logger::GLOBAL_LOGGER.lock().unwrap().print_verbose(format_args!($($arg)*));
+    };
+}
+
+#[macro_export]
+macro_rules! log_print_args {
+    ($matches:expr) => {
+        $crate::logger::GLOBAL_LOGGER.lock().unwrap().print_args($matches);
+    };
 }

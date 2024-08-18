@@ -1,53 +1,58 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
-use std::time::Duration;
 use url::Url;
 
-pub fn send_request(target_url: &str, method: &str, path: &str, version: &str, headers: &BTreeMap<String, String>) -> String {
-    let (host, _path) = parse_url(target_url);
-    let port = 80;
+pub fn craft_request(method: &str, request_target: &str, http_version: &str, headers: &BTreeMap<String, String>) -> String {
+    let request_line = format!("{} {} {}\r\n", method, request_target, http_version);
 
-    // Craft the request line
-    let request_line = format!("{} {} {}\r\n", method, path, version);
-
-    // Craft the headers
     let mut headers_str = String::new();
     for (key, value) in headers {
         headers_str.push_str(&format!("{}: {}\r\n", key, value));
     }
 
-    // Combine request line, headers and body
     let request = format!("{}{}\r\n", request_line, headers_str);
+    request
+}
+
+pub fn send_request(target_url: &str, request: &str) -> String {
+    let (host, port, _path) = parse_url(target_url);
 
     // Open a TCP stream to the server
     let mut stream = TcpStream::connect(format!("{}:{}", host, port)).expect("Failed to connect to server");
     stream.set_nodelay(true).expect("Failed to set nodelay");
-    stream.set_read_timeout(Some(Duration::new(5, 0))).expect("Failed to set read timeout");
 
     // Send the crafted request
     stream.write_all(request.as_bytes()).expect("Failed to write to stream");
 
     // Read the response
-    let mut response = String::new();
-    let mut buffer = [0; 512];
+    let mut response = Vec::new();
+    let mut buffer = [0; 4096];
 
-    while stream.read(&mut buffer).expect("Error reading response") > 0 {
-        response.push_str(&String::from_utf8_lossy(&buffer));
-        if response.contains("\r\n\r\n") {
+    loop {
+        let bytes_read = stream.read(&mut buffer).expect("Error reading response");
+
+        if bytes_read == 0 {
+            break; // Connection closed
+        }
+
+        response.extend_from_slice(&buffer[..bytes_read]);
+
+        if response.windows(4).any(|window| window == b"\r\n\r\n") {
             break;
         }
     }
 
-    // Parse headers and get Content-Length header if exists
-    let headers_end = match response.find("\r\n\r\n") {
-        Some(index) => index + 4,
-        None => {
-            eprintln!("Error: HTTP headers not found in the response");
-            return String::new();
-        }
-    };
-    headers_str = response[..headers_end].to_string();
+    // Convert the response to a string
+    let response_str = String::from_utf8_lossy(&response);
+
+    // Split headers and body
+    let headers_end = response_str.find("\r\n\r\n").map(|index| index + 4).unwrap_or(response_str.len());
+
+    let headers_str = &response_str[..headers_end];
+    let mut body_str = &response_str[headers_end..];
+
+    // Check Content-Length if available
     let content_length = headers_str
         .lines()
         .find(|&line| line.starts_with("Content-Length:"))
@@ -55,39 +60,51 @@ pub fn send_request(target_url: &str, method: &str, path: &str, version: &str, h
         .and_then(|len| len.trim().parse::<usize>().ok())
         .unwrap_or(0);
 
-    // Read the body
-    let mut body = String::new();
-    let mut total_bytes_read = response[headers_end..].len();
-    body.push_str(&response[headers_end..]);
+    // If content length is not 0, read the rest of the body
+    let mut body = body_str.to_string();
+    if content_length > body.len() {
+        let mut buffer = vec![0; content_length - body.len()];
+        let mut total_bytes_read = body.len();
 
-    while total_bytes_read < content_length {
-        let bytes_read = stream.read(&mut buffer).expect("Error reading response");
-        total_bytes_read += bytes_read;
-        body.push_str(&String::from_utf8_lossy(&buffer[..bytes_read]));
+        while total_bytes_read < content_length {
+            let bytes_read = stream.read(&mut buffer).expect("Error reading response body");
+            if bytes_read == 0 {
+                break; // Connection closed
+            }
+            total_bytes_read += bytes_read;
+            body.push_str(&String::from_utf8_lossy(&buffer[..bytes_read]));
+        }
     }
 
     // Close connection
     stream.shutdown(Shutdown::Both).expect("Shutdown failed");
 
-    response
+    response_str.to_string()
 }
 
-pub fn parse_url(url: &str) -> (String, String) {
+pub fn parse_url(url: &str) -> (String, u16, String) {
     let mut cleaned_url = url.to_string();
+    let mut default_port = 80;
 
-    // Remove the schema (http:// or https://) if present
+    // Remove the scheme (http:// or https://) if present
     if cleaned_url.starts_with("http://") {
         cleaned_url = cleaned_url[7..].to_string();
     } else if cleaned_url.starts_with("https://") {
         cleaned_url = cleaned_url[8..].to_string();
+        default_port = 443;
     }
 
-    // Split the remaining URL into host and path
+    // Split the remaining URL into host:port and path
     let mut parts = cleaned_url.splitn(2, '/');
-    let host = parts.next().unwrap_or("").to_string();
+    let host_and_port = parts.next().unwrap_or("").to_string();
     let path = format!("/{}", parts.next().unwrap_or(""));
 
-    (host, path)
+    // Split the host_and_port into host and port
+    let mut host_parts = host_and_port.splitn(2, ':');
+    let host = host_parts.next().unwrap_or("").to_string();
+    let port = host_parts.next().map_or(default_port, |p| p.parse::<u16>().unwrap_or(default_port));
+
+    (host, port, path)
 }
 
 pub fn normalize_url(base_url: &str) -> String {

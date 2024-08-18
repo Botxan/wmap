@@ -28,7 +28,7 @@ impl Logger {
         logger.include_framework = include_framework;
 
         if let Some(file_path) = output_file {
-            let file = OpenOptions::new().create(true).append(true).open(file_path).expect("Failed to open log file");
+            let file = OpenOptions::new().write(true).truncate(true).create(true).open(file_path).expect("Failed to open log file");
             logger.output_file = Some(Mutex::new(io::BufWriter::new(file)));
         }
     }

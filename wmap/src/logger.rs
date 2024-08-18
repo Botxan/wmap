@@ -14,11 +14,11 @@ pub struct Logger {
 
 #[derive(Serialize)]
 pub struct JSONEntry {
-    request_index: u32,
-    request: String,
-    response: String,
+    pub request_index: u32,
+    pub request: String,
+    pub response: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    framework: Option<String>,
+    pub framework: Option<String>,
 }
 
 impl Logger {
@@ -56,15 +56,6 @@ impl Logger {
             writeln!(writer, "{}", json_entry).expect("Failed to write to log file");
         } else {
             println!("{}", json_entry);
-        }
-    }
-
-    pub fn create_json_entry(&self, request_index: u32, request: &str, response: &str, framework: Option<&str>) -> JSONEntry {
-        JSONEntry {
-            request_index,
-            request: request.to_string(),
-            response: response.to_string(),
-            framework: if self.include_framework { framework.map(|s| s.to_string()) } else { None },
         }
     }
 
@@ -112,7 +103,7 @@ impl Default for Logger {
         Logger {
             verbose: false,
             output_file: None,
-            include_framework: false,
+            include_framework: false, // Default value for include_framework
         }
     }
 }
@@ -122,21 +113,21 @@ lazy_static! {
 }
 
 #[macro_export]
-macro_rules! log_json {
-    ($count:expr, $request:expr, $response:expr $(, $framework:expr)?) => {
-        let framework: Option<String> = None;
-        $(
-            let framework = Some($framework.to_string());
-        )?
+macro_rules! log_print_json {
+    ($count:expr, $request:expr, $response:expr $(, $framework:expr)?) => {{
+        let framework = $(
+            $framework.map(|s| s.to_string())
+        )?;
 
-        let entry = $crate::logger::GLOBAL_LOGGER.lock().unwrap().create_json_entry(
-            $count,
-            $request,
-            $response,
-            framework.as_deref()
-        );
+        let entry = $crate::logger::JSONEntry {
+            request_index: $count,
+            request: $request.to_string(),
+            response: $response.to_string(),
+            framework,
+        };
+
         $crate::logger::GLOBAL_LOGGER.lock().unwrap().print_json(&entry);
-    };
+    }};
 }
 
 #[macro_export]

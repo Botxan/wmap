@@ -33,7 +33,7 @@ pub fn send_request(target_url: &str, request: &str) -> String {
         let bytes_read = stream.read(&mut buffer).expect("Error reading response");
 
         if bytes_read == 0 {
-            break; // Connection closed
+            break;
         }
 
         response.extend_from_slice(&buffer[..bytes_read]);
@@ -43,14 +43,13 @@ pub fn send_request(target_url: &str, request: &str) -> String {
         }
     }
 
-    // Convert the response to a string
     let response_str = String::from_utf8_lossy(&response);
 
     // Split headers and body
     let headers_end = response_str.find("\r\n\r\n").map(|index| index + 4).unwrap_or(response_str.len());
 
     let headers_str = &response_str[..headers_end];
-    let mut body_str = &response_str[headers_end..];
+    let body_str = &response_str[headers_end..];
 
     // Check Content-Length if available
     let content_length = headers_str
@@ -60,7 +59,7 @@ pub fn send_request(target_url: &str, request: &str) -> String {
         .and_then(|len| len.trim().parse::<usize>().ok())
         .unwrap_or(0);
 
-    // If content length is not 0, read the rest of the body
+    // If content length not 0, read the rest of the body
     let mut body = body_str.to_string();
     if content_length > body.len() {
         let mut buffer = vec![0; content_length - body.len()];
@@ -69,14 +68,13 @@ pub fn send_request(target_url: &str, request: &str) -> String {
         while total_bytes_read < content_length {
             let bytes_read = stream.read(&mut buffer).expect("Error reading response body");
             if bytes_read == 0 {
-                break; // Connection closed
+                break;
             }
             total_bytes_read += bytes_read;
             body.push_str(&String::from_utf8_lossy(&buffer[..bytes_read]));
         }
     }
 
-    // Close connection
     stream.shutdown(Shutdown::Both).expect("Shutdown failed");
 
     response_str.to_string()

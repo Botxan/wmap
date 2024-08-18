@@ -5,12 +5,12 @@ use url::Url;
 pub struct Fuzzer {
     pub methods: Vec<String>,
     pub encoding: String,
-    pub request_count: u32,
+    pub request_index: u32,
 }
 
 impl Fuzzer {
-    pub fn new(methods: Vec<String>, encoding: String, request_count: u32) -> Self {
-        Self { methods, encoding, request_count }
+    pub fn new(methods: Vec<String>, encoding: String, request_index: u32) -> Self {
+        Self { methods, encoding, request_index }
     }
 
     pub fn fuzz_http_method(&self, method: &str) -> Vec<String> {

@@ -4,7 +4,14 @@ pub fn parse_args() -> clap::ArgMatches {
     command!()
         .about("HTTP request fuzzing CLI tool for web framework detection")
         .arg(Arg::new("url").short('u').long("url").help("Target URL").required(true))
-        .arg(Arg::new("input").short('i').long("input").help("Input file with list of URLs").conflicts_with("url"))
+        .arg(
+            Arg::new("input")
+                .short('i')
+                .long("input")
+                .help("Input file with list of URLs")
+                .conflicts_with("url")
+                .required(true),
+        )
         .arg(
             Arg::new("methods")
                 .short('m')

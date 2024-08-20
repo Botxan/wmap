@@ -54,8 +54,8 @@ fn process_mutated_methods(fuzzer: &mut Fuzzer, method: &str, url: &str, request
 
     for mutated_method in mutated_methods {
         let request = http_client::craft_request(&mutated_method, request_target, DEFAULT_HTTP_VERSION, headers);
-        let response = http_client::send_request(url, &request);
-        log_print_json!(fuzzer.request_index, &request, &response, framework);
+        let (response, response_time) = http_client::send_request(url, &request);
+        log_print_json!(fuzzer.request_index, &request, &response, response_time, framework);
         fuzzer.request_index += 1;
     }
 }
@@ -65,8 +65,8 @@ fn process_mutated_request_targets(fuzzer: &mut Fuzzer, method: &str, url: &str,
 
     for mutated_request_target in &mutated_request_targets {
         let request = http_client::craft_request(method, &mutated_request_target, DEFAULT_HTTP_VERSION, headers);
-        let response = http_client::send_request(url, &request);
-        log_print_json!(fuzzer.request_index, &request, &response, framework);
+        let (response, response_time) = http_client::send_request(url, &request);
+        log_print_json!(fuzzer.request_index, &request, &response, response_time, framework);
         fuzzer.request_index += 1;
     }
 }
@@ -76,8 +76,8 @@ fn process_mutated_http_versions(fuzzer: &mut Fuzzer, method: &str, url: &str, r
 
     for mutated_http_version in &mutated_http_versions {
         let request = http_client::craft_request(method, request_target, mutated_http_version, headers);
-        let response = http_client::send_request(url, &request);
-        log_print_json!(fuzzer.request_index, &request, &response, framework);
+        let (response, response_time) = http_client::send_request(url, &request);
+        log_print_json!(fuzzer.request_index, &request, &response, response_time, framework);
         fuzzer.request_index += 1;
     }
 }
@@ -86,8 +86,8 @@ fn process_mutated_headers(fuzzer: &mut Fuzzer, method: &str, url: &str, request
     let mutated_headers_list = fuzzer.fuzz_headers(url);
     for mutated_headers in mutated_headers_list {
         let request = http_client::craft_request(method, request_target, DEFAULT_HTTP_VERSION, &mutated_headers);
-        let response = http_client::send_request(url, &request);
-        log_print_json!(fuzzer.request_index, &request, &response, framework);
+        let (response, response_time) = http_client::send_request(url, &request);
+        log_print_json!(fuzzer.request_index, &request, &response, response_time, framework);
         fuzzer.request_index += 1;
     }
 }

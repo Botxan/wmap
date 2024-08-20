@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
+use std::time::Instant;
 use url::Url;
 
 pub fn craft_request(method: &str, request_target: &str, http_version: &str, headers: &BTreeMap<String, String>) -> String {
@@ -15,12 +16,14 @@ pub fn craft_request(method: &str, request_target: &str, http_version: &str, hea
     request
 }
 
-pub fn send_request(target_url: &str, request: &str) -> String {
+pub fn send_request(target_url: &str, request: &str) -> (String, u128) {
     let (host, port, _path) = parse_url(target_url);
 
     // Open a TCP stream to the server
     let mut stream = TcpStream::connect(format!("{}:{}", host, port)).expect("Failed to connect to server");
     stream.set_nodelay(true).expect("Failed to set nodelay");
+
+    let start_time = Instant::now();
 
     // Send the crafted request
     stream.write_all(request.as_bytes()).expect("Failed to write to stream");
@@ -75,9 +78,11 @@ pub fn send_request(target_url: &str, request: &str) -> String {
         }
     }
 
+    let duration = start_time.elapsed().as_millis();
+
     stream.shutdown(Shutdown::Both).expect("Shutdown failed");
 
-    response_str.to_string()
+    (response_str.to_string(), duration)
 }
 
 pub fn parse_url(url: &str) -> (String, u16, String) {

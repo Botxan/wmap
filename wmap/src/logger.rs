@@ -17,6 +17,7 @@ pub struct JSONEntry {
     pub request_index: u32,
     pub request: String,
     pub response: String,
+    pub response_time: u128,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub framework: Option<String>,
 }
@@ -103,7 +104,7 @@ impl Default for Logger {
         Logger {
             verbose: false,
             output_file: None,
-            include_framework: false, // Default value for include_framework
+            include_framework: false,
         }
     }
 }
@@ -114,7 +115,7 @@ lazy_static! {
 
 #[macro_export]
 macro_rules! log_print_json {
-    ($count:expr, $request:expr, $response:expr $(, $framework:expr)?) => {{
+    ($count:expr, $request:expr, $response:expr, $response_time:expr $(, $framework:expr)?) => {{
         let framework = $(
             $framework.map(|s| s.to_string())
         )?;
@@ -123,6 +124,7 @@ macro_rules! log_print_json {
             request_index: $count,
             request: $request.to_string(),
             response: $response.to_string(),
+            response_time: $response_time,
             framework,
         };
 

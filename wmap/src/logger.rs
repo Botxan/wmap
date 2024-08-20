@@ -1,15 +1,26 @@
 use clap::ArgMatches;
 use lazy_static::lazy_static;
 use serde::Serialize;
+use serde_json;
 use std::fmt::Write as FmtWrite;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub struct Logger {
     verbose: bool,
     output_file: Option<Mutex<io::BufWriter<std::fs::File>>>,
     include_framework: bool,
+    formatter: Arc<dyn OutputFormatter + Send + Sync>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RequestResult {
+    pub request_index: u32,
+    pub request: String,
+    pub response: String,
+    pub response_time: u128,
+    pub framework: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -23,10 +34,11 @@ pub struct JSONEntry {
 }
 
 impl Logger {
-    pub fn init(verbose: bool, output_file: Option<&str>, include_framework: bool) {
+    pub fn init(verbose: bool, output_file: Option<&str>, include_framework: bool, formatter: Arc<dyn OutputFormatter + Send + Sync>) {
         let mut logger = GLOBAL_LOGGER.lock().unwrap();
         logger.verbose = verbose;
         logger.include_framework = include_framework;
+        logger.formatter = formatter;
 
         if let Some(file_path) = output_file {
             let file = OpenOptions::new().write(true).truncate(true).create(true).open(file_path).expect("Failed to open log file");
@@ -50,13 +62,13 @@ impl Logger {
         }
     }
 
-    pub fn print_json(&self, entry: &JSONEntry) {
-        let json_entry = serde_json::to_string(entry).expect("Failed to serialize log entry");
+    pub fn write_formatted_results(&self, results: &[RequestResult]) {
+        let formatted_results = self.formatter.format(results);
         if let Some(ref output_file) = self.output_file {
             let mut writer = output_file.lock().unwrap();
-            writeln!(writer, "{}", json_entry).expect("Failed to write to log file");
+            writeln!(writer, "{}", formatted_results).expect("Failed to write formatted results to log file");
         } else {
-            println!("{}", json_entry);
+            println!("{}", formatted_results);
         }
     }
 
@@ -72,7 +84,6 @@ impl Logger {
             let id_str = arg_id.as_str();
 
             if matches.try_get_many::<String>(id_str).is_ok() {
-                // Single/Multiple value arg
                 if let Ok(Some(values)) = matches.try_get_many::<String>(id_str) {
                     let values: Vec<String> = values.map(|v| v.to_string()).collect();
                     if values.len() == 1 {
@@ -82,14 +93,12 @@ impl Logger {
                     }
                 }
             } else if matches.get_flag(id_str) {
-                // Flag
                 writeln!(output, "  {}: true", id_str).unwrap();
             } else {
                 writeln!(output, "  {}: false", id_str).unwrap();
             }
         }
 
-        // Output handling
         if let Some(ref output_file) = self.output_file {
             let mut writer = output_file.lock().unwrap();
             writeln!(writer, "{}", output).expect("Failed to write to log file");
@@ -105,31 +114,13 @@ impl Default for Logger {
             verbose: false,
             output_file: None,
             include_framework: false,
+            formatter: Arc::new(JsonFormatter),
         }
     }
 }
 
 lazy_static! {
     pub static ref GLOBAL_LOGGER: Mutex<Logger> = Mutex::new(Logger::default());
-}
-
-#[macro_export]
-macro_rules! log_print_json {
-    ($count:expr, $request:expr, $response:expr, $response_time:expr $(, $framework:expr)?) => {{
-        let framework = $(
-            $framework.map(|s| s.to_string())
-        )?;
-
-        let entry = $crate::logger::JSONEntry {
-            request_index: $count,
-            request: $request.to_string(),
-            response: $response.to_string(),
-            response_time: $response_time,
-            framework,
-        };
-
-        $crate::logger::GLOBAL_LOGGER.lock().unwrap().print_json(&entry);
-    }};
 }
 
 #[macro_export]
@@ -147,8 +138,90 @@ macro_rules! log_print_verbose {
 }
 
 #[macro_export]
-macro_rules! log_print_args {
+macro_rules! log_args {
     ($matches:expr) => {
         $crate::logger::GLOBAL_LOGGER.lock().unwrap().print_args($matches);
     };
+}
+
+#[macro_export]
+macro_rules! log_formatted_results {
+    ($results:expr) => {{
+        let logger = $crate::logger::GLOBAL_LOGGER.lock().unwrap();
+        logger.write_formatted_results(&$results);
+    }};
+}
+
+pub trait OutputFormatter: Send + Sync {
+    fn format(&self, results: &[RequestResult]) -> String;
+}
+
+pub struct JsonFormatter;
+
+impl OutputFormatter for JsonFormatter {
+    fn format(&self, results: &[RequestResult]) -> String {
+        serde_json::to_string(results).unwrap_or_else(|_| "[]".to_string())
+    }
+}
+
+pub struct CsvFormatter;
+
+impl OutputFormatter for CsvFormatter {
+    fn format(&self, results: &[RequestResult]) -> String {
+        let mut csv_output = String::new();
+
+        // Write header
+        writeln!(csv_output, "request_index,request,response,response_time,framework").unwrap();
+
+        // Write each result
+        for result in results {
+            writeln!(
+                csv_output,
+                "{},{},{},{},{}",
+                result.request_index,
+                escape_csv_value(&result.request),
+                escape_csv_value(&result.response),
+                result.response_time,
+                result.framework.as_deref().unwrap_or("")
+            )
+            .unwrap();
+        }
+
+        csv_output
+    }
+}
+
+// Helper function to escape CSV values
+fn escape_csv_value(value: &str) -> String {
+    let mut escaped = String::new();
+    let mut in_quotes = false;
+
+    for c in value.chars() {
+        match c {
+            '"' => {
+                escaped.push('"');
+                escaped.push('"'); // CSV standard: double up quotes
+            }
+            ',' | '\n' | '\r' => {
+                if !in_quotes {
+                    escaped.push('"');
+                    in_quotes = true;
+                }
+                escaped.push(c);
+            }
+            _ => {
+                if in_quotes {
+                    escaped.push('"');
+                    in_quotes = false;
+                }
+                escaped.push(c);
+            }
+        }
+    }
+
+    if in_quotes {
+        escaped.push('"');
+    }
+
+    escaped
 }

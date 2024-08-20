@@ -1,16 +1,15 @@
 use crate::http_client;
-use std::{cmp, collections::BTreeMap};
+use std::collections::BTreeMap;
 use url::Url;
 
 pub struct Fuzzer {
     pub methods: Vec<String>,
-    pub encoding: String,
     pub request_index: u32,
 }
 
 impl Fuzzer {
-    pub fn new(methods: Vec<String>, encoding: String, request_index: u32) -> Self {
-        Self { methods, encoding, request_index }
+    pub fn new(methods: Vec<String>, request_index: u32) -> Self {
+        Self { methods, request_index }
     }
 
     pub fn fuzz_http_method(&self, method: &str) -> Vec<String> {
@@ -76,54 +75,41 @@ impl Fuzzer {
 
     pub fn fuzz_request_target(&self, request_target: &str) -> Vec<String> {
         let mut mutated_request_targets = Vec::new();
-        let path_len = request_target.len();
-        let max_len = cmp::min(path_len, 5);
+        let request_target_len = request_target.len();
+        let (path, resource) = self.extract_path_and_resource(request_target);
 
         // 1. Basic structure manipulation
         // Suppress chars
-        for i in 0..max_len {
-            let suppressed = self.suppress_char(request_target, i).unwrap();
+        if let Some(suppressed) = self.suppress_char(request_target, request_target_len - 1) {
             mutated_request_targets.push(suppressed);
         }
 
         // Interchange chars
-        if path_len > 1 {
-            for i in 0..max_len {
-                for j in i + 1..max_len {
-                    let swapped = self.swap_chars(request_target, i, j);
-                    mutated_request_targets.push(swapped);
-                }
+        if let Some(r) = resource {
+            let len = r.len();
+            if len >= 2 {
+                let swapped = self.swap_chars(&r, 0, len - 1);
+                mutated_request_targets.push(format!("{}/{}", path, swapped));
             }
         }
 
         // Add chars
-        let chars = vec!['/', 'z', '#'];
-        let added = self.add_chars(request_target, chars);
-        mutated_request_targets.extend(added);
+        let chars = vec!['/', '#', '?', '$', '%'];
+        for char in chars {
+            mutated_request_targets.push(format!("{}{}", request_target, char));
+        }
 
         // Path manipulation
         // Alter path separator
         mutated_request_targets.push(request_target.replace("/", "\\"));
 
-        // Truncate path
-        if request_target.contains('/') {
-            let truncated = request_target.rsplitn(2, '/').last().unwrap_or("");
-            mutated_request_targets.push(format!("/{}", truncated));
-        }
-
         // Path traversal sequences
-        mutated_request_targets.push(request_target.replace("/", "/../"));
-        mutated_request_targets.push(request_target.replace("/", "/../../../../../../../../../../../../../../../../"));
-
-        // Duplicate  segments
-        mutated_request_targets.push(request_target.repeat(2));
+        mutated_request_targets.push(format!("{}{}", request_target, "/../"));
+        mutated_request_targets.push(format!("{}{}", request_target, "/../../../../../../../../../../../../../../../../"));
 
         // Overlong segments
-        if let Some(first_segment) = request_target.split('/').nth(1) {
-            let overlong_segment = "too-long-".repeat(50);
-            let mutated_target = request_target.replacen(first_segment, &overlong_segment, 1);
-            mutated_request_targets.push(mutated_target);
-        }
+        let overlong_segment = "too-long-".repeat(50);
+        mutated_request_targets.push(format!("{}/{}", path, overlong_segment));
 
         // Slash padding
         mutated_request_targets.push(request_target.replace("/", "////"));
@@ -403,5 +389,19 @@ impl Fuzzer {
         }
 
         results
+    }
+
+    fn extract_path_and_resource(&self, request_target: &str) -> (String, Option<String>) {
+        let parts: Vec<&str> = request_target.split('/').collect();
+
+        if let Some(last_part) = parts.last() {
+            if !last_part.is_empty() {
+                let file = last_part.to_string();
+                let path_without_file = parts[..parts.len() - 1].join("/");
+                return (path_without_file, Some(file));
+            }
+        }
+
+        (request_target.to_string(), None)
     }
 }

@@ -177,7 +177,6 @@ impl Fuzzer {
             "HTT/1.1",    // Typo in protocol
             "HTTP/1.1 ",  // Trailing space
             "HTTP/",      // Empty version number
-            "",           // Empty version
         ];
         for v in malformed_versions {
             mutated_versions.push(v.to_string());
@@ -189,11 +188,11 @@ impl Fuzzer {
             mutated_versions.push(v.to_string());
         }
 
-        // 5. Overlong version
+        // 4. Overlong version
         let overlong_version = format!("HTTP/1.1{}", "A".repeat(1024));
         mutated_versions.push(overlong_version);
 
-        // 6. Encoding mutations
+        // 5. Encoding mutations
         let encoded_versions = vec![
             "HTTP%2F1.1",       // Slash encoded
             "HTTP%2F1%2E1",     // Slash and dot encoded

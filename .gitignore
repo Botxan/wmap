@@ -18,3 +18,5 @@ fuzzer/.vscode/
 # Output files
 fuzzer/result*
 classifier/result*
+
+classifier/myenv

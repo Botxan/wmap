@@ -5,6 +5,7 @@ mod logger;
 mod utils;
 
 use fuzz::Fuzzer;
+use http_client::spacing_type::SpacingType;
 use logger::RequestResult;
 use std::collections::BTreeMap;
 
@@ -48,6 +49,7 @@ fn process_requests_per_method(fuzzer: &mut Fuzzer, url: &str, request_target: &
         process_mutated_request_targets(fuzzer, method, url, request_target, headers, framework, results);
         process_mutated_http_versions(fuzzer, method, url, request_target, headers, framework, results);
         process_mutated_headers(fuzzer, method, url, request_target, framework, results);
+        process_mutated_spacings(fuzzer, method, url, request_target, headers, framework, results);
     }
 }
 
@@ -55,7 +57,7 @@ fn process_mutated_methods(fuzzer: &mut Fuzzer, method: &str, url: &str, request
     let mutated_methods = fuzzer.fuzz_http_method(method);
 
     for mutated_method in mutated_methods {
-        let request = http_client::craft_request(&mutated_method, request_target, DEFAULT_HTTP_VERSION, headers);
+        let request = http_client::craft_request(&mutated_method, request_target, DEFAULT_HTTP_VERSION, headers, None);
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
@@ -72,7 +74,7 @@ fn process_mutated_request_targets(fuzzer: &mut Fuzzer, method: &str, url: &str,
     let mutated_request_targets = fuzzer.fuzz_request_target(request_target);
 
     for mutated_request_target in &mutated_request_targets {
-        let request = http_client::craft_request(method, &mutated_request_target, DEFAULT_HTTP_VERSION, headers);
+        let request = http_client::craft_request(method, &mutated_request_target, DEFAULT_HTTP_VERSION, headers, None);
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
@@ -89,7 +91,7 @@ fn process_mutated_http_versions(fuzzer: &mut Fuzzer, method: &str, url: &str, r
     let mutated_http_versions = fuzzer.fuzz_http_version();
 
     for mutated_http_version in &mutated_http_versions {
-        let request = http_client::craft_request(method, request_target, mutated_http_version, headers);
+        let request = http_client::craft_request(method, request_target, mutated_http_version, headers, None);
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
@@ -105,7 +107,35 @@ fn process_mutated_http_versions(fuzzer: &mut Fuzzer, method: &str, url: &str, r
 fn process_mutated_headers(fuzzer: &mut Fuzzer, method: &str, url: &str, request_target: &str, framework: Option<&str>, results: &mut Vec<RequestResult>) {
     let mutated_headers_list = fuzzer.fuzz_headers(url);
     for mutated_headers in mutated_headers_list {
-        let request = http_client::craft_request(method, request_target, DEFAULT_HTTP_VERSION, &mutated_headers);
+        let request = http_client::craft_request(method, request_target, DEFAULT_HTTP_VERSION, &mutated_headers, None);
+        let (response, response_time) = http_client::send_request(url, &request);
+        results.push(RequestResult {
+            request_index: fuzzer.request_index,
+            request,
+            response,
+            response_time,
+            framework: framework.map(|s| s.to_string()),
+        });
+        fuzzer.request_index += 1;
+    }
+}
+
+fn process_mutated_spacings(fuzzer: &mut Fuzzer, method: &str, url: &str, request_target: &str, headers: &BTreeMap<String, String>, framework: Option<&str>, results: &mut Vec<RequestResult>) {
+    let spacing_types = vec![
+        SpacingType::AllSpaces,
+        SpacingType::AllTabs,
+        SpacingType::DoubleSpaces,
+        SpacingType::MultipleSpaces,
+        SpacingType::MixSpacesAndTabs,
+        SpacingType::NullTerminated,
+        SpacingType::MultipleLineBreaks,
+        SpacingType::LeadingTrailingTabs,
+        SpacingType::LeadingTrailingWhitespaces,
+        SpacingType::ControlChars,
+    ];
+
+    for spacing_type in spacing_types {
+        let request = http_client::craft_request(method, request_target, DEFAULT_HTTP_VERSION, headers, Some(&spacing_type));
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,

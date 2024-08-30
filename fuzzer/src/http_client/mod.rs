@@ -1,18 +1,27 @@
+pub mod spacing_type;
+
+use spacing_type::SpacingType;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::time::Instant;
 use url::Url;
 
-pub fn craft_request(method: &str, request_target: &str, http_version: &str, headers: &BTreeMap<String, String>) -> String {
-    let request_line = format!("{} {} {}\r\n", method, request_target, http_version);
+pub fn craft_request(method: &str, request_target: &str, http_version: &str, headers: &BTreeMap<String, String>, spacing_type: Option<&SpacingType>) -> String {
+    let mut request_line = format!("{} {} {}\r\n", method, request_target, http_version);
 
-    let mut headers_str = String::new();
-    for (key, value) in headers {
-        headers_str.push_str(&format!("{}: {}\r\n", key, value));
+    // Apply spacing mutation to the request line
+    if let Some(mutation_type) = spacing_type {
+        request_line = mutation_type.apply(&request_line);
     }
 
-    let request = format!("{}{}\r\n", request_line, headers_str);
+    // Add headers
+    let mut request = request_line;
+    for (key, value) in headers {
+        request.push_str(&format!("{}: {}\r\n", key, value));
+    }
+    request.push_str("\r\n");
+
     request
 }
 

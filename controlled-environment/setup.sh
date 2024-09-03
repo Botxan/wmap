@@ -17,9 +17,8 @@ if [ ! `which curl` ]; then
 fi
 
 . ./config
-. ./base/option_target.sh
 
-echo "Target frameworks: $param_targets"
+echo "Target frameworks: $frameworks_list"
 
 for fw in $param_targets
 do

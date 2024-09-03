@@ -18,7 +18,6 @@ host_port = get_host_port()
 base_url = f"http://127.0.0.1:{host_port}/wmap"
 
 frameworks_list = {
-    "cakephp-4.5": base_url + "/cakephp-4.5/webroot/index.php/hello/index",
     "cakephp-5.0": base_url + "/cakephp-5.0/webroot/index.php/hello/index",
     "codeigniter-4.4": base_url + "/codeigniter-4.4/public/index.php/hello/index",
     "fastroute-1.3": base_url + "/fastroute-1.3/public/index.php/hello/index",
@@ -32,8 +31,6 @@ frameworks_list = {
     "pure-php": base_url + "/pure-php/public/index.php/hello/index",
     "silex-2.3": base_url + "/silex-2.3/web/index.php/hello/index",
     "slim-4.12": base_url + "/slim-4.12/public/index.php/hello/index",
-    "symfony-5.4": base_url + "/symfony-5.4/public/index.php/hello/index",
-    "symfony-6.4": base_url + "/symfony-6.4/public/index.php/hello/index",
     "symfony-7.0": base_url + "/symfony-7.0/public/index.php/hello/index",
     "ubiquity-2.4.x.dev": base_url + "/ubiquity-2.4.x.dev/public/index.php?c=HelloWorldController/index",
     "yii-2.0-basic": base_url + "/yii-2.0-basic/web/index.php?r=helloworld/index"

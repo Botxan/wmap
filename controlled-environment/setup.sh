@@ -20,7 +20,7 @@ fi
 
 echo "Target frameworks: $frameworks_list"
 
-for fw in $param_targets
+for fw in $frameworks_list
 do
     if [ -d "$fw" ]; then
         echo -e "\n\n"

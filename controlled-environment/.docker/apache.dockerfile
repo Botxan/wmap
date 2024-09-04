@@ -17,6 +17,8 @@ RUN docker-php-ext-install intl zip
 COPY . /var/www/html/wmap
 WORKDIR /var/www/html/wmap
 
+RUN chmod +x setup.sh
+
 RUN yes | ./setup.sh
 
 ENV PORT 80

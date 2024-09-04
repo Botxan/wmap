@@ -22,7 +22,6 @@ frameworks_list = {
     "codeigniter-4.4": base_url + "/codeigniter-4.4/public/index.php/hello/index",
     "fastroute-1.3": base_url + "/fastroute-1.3/public/index.php/hello/index",
     "fatfree-3.8": base_url + "/fatfree-3.8/public/index.php/hello/index",
-    "fuelphp-1.9": base_url + "/fuelphp-1.9/public/index.php/helloworld/index",
     "kumbia-1.1": base_url + "/kumbia-1.1/default/public/index.php/helloworld/index",
     "laravel-10.2": base_url + "/laravel-10.2/public/index.php/hello/index",
     "leaf-3.5": base_url + "/leaf-3.5/public/index.php/hello/index",

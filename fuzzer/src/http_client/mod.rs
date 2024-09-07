@@ -30,7 +30,6 @@ pub fn send_request(target_url: &str, request: &str) -> (String, u128) {
 
     // Open a TCP stream to the server
     let mut stream = TcpStream::connect(format!("{}:{}", host, port)).expect("Failed to connect to server");
-    stream.set_nodelay(true).expect("Failed to set nodelay");
 
     let start_time = Instant::now();
 

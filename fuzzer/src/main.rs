@@ -14,7 +14,7 @@ const DEFAULT_HTTP_VERSION: &str = "HTTP/1.1";
 fn main() {
     let matches = args::parse_args();
 
-    utils::initialize_logger(&matches);
+    logger::initialize_logger(&matches);
     log_args!(&matches);
 
     let urls_and_frameworks: Vec<String> = if let Some(input_file) = matches.get_one::<String>("input") {
@@ -54,95 +54,113 @@ fn process_requests_per_method(fuzzer: &mut Fuzzer, url: &str, request_target: &
 }
 
 fn process_mutated_methods(fuzzer: &mut Fuzzer, method: &str, url: &str, request_target: &str, headers: &BTreeMap<String, String>, framework: Option<&str>, results: &mut Vec<RequestResult>) {
-    let mutated_methods = fuzzer.fuzz_http_method(method);
+    let (descriptions, mutations) = fuzzer.fuzz_http_method(method);
 
-    for mutated_method in mutated_methods {
-        let request = http_client::craft_request(&mutated_method, request_target, DEFAULT_HTTP_VERSION, headers, None);
+    for (description, mutation) in descriptions.iter().zip(mutations.iter()) {
+        let request = http_client::craft_request(&mutation, request_target, DEFAULT_HTTP_VERSION, headers, None);
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
+            mutation_description: description.clone(),
             request,
             response,
             response_time,
-            framework: framework.map(|s| s.to_string()),
+            framework: framework.map(|f| f.to_string()),
         });
         fuzzer.request_index += 1;
     }
 }
 
 fn process_mutated_request_targets(fuzzer: &mut Fuzzer, method: &str, url: &str, request_target: &str, headers: &BTreeMap<String, String>, framework: Option<&str>, results: &mut Vec<RequestResult>) {
-    let mutated_request_targets = fuzzer.fuzz_request_target(request_target);
+    let (descriptions, mutations) = fuzzer.fuzz_request_target(request_target);
 
-    for mutated_request_target in &mutated_request_targets {
-        let request = http_client::craft_request(method, &mutated_request_target, DEFAULT_HTTP_VERSION, headers, None);
+    for (description, mutation) in descriptions.iter().zip(mutations.iter()) {
+        let request = http_client::craft_request(method, &mutation, DEFAULT_HTTP_VERSION, headers, None);
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
+            mutation_description: description.clone(),
             request,
             response,
             response_time,
-            framework: framework.map(|s| s.to_string()),
+            framework: framework.map(|f| f.to_string()),
         });
         fuzzer.request_index += 1;
     }
 }
 
 fn process_mutated_http_versions(fuzzer: &mut Fuzzer, method: &str, url: &str, request_target: &str, headers: &BTreeMap<String, String>, framework: Option<&str>, results: &mut Vec<RequestResult>) {
-    let mutated_http_versions = fuzzer.fuzz_http_version();
+    let (descriptions, mutations) = fuzzer.fuzz_http_version(DEFAULT_HTTP_VERSION);
 
-    for mutated_http_version in &mutated_http_versions {
-        let request = http_client::craft_request(method, request_target, mutated_http_version, headers, None);
+    for (description, mutation) in descriptions.iter().zip(mutations.iter()) {
+        let request = http_client::craft_request(method, request_target, mutation, headers, None);
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
+            mutation_description: description.clone(),
             request,
             response,
             response_time,
-            framework: framework.map(|s| s.to_string()),
+            framework: framework.map(|f| f.to_string()),
         });
         fuzzer.request_index += 1;
     }
 }
 
 fn process_mutated_headers(fuzzer: &mut Fuzzer, method: &str, url: &str, request_target: &str, framework: Option<&str>, results: &mut Vec<RequestResult>) {
-    let mutated_headers_list = fuzzer.fuzz_headers(url);
-    for mutated_headers in mutated_headers_list {
-        let request = http_client::craft_request(method, request_target, DEFAULT_HTTP_VERSION, &mutated_headers, None);
+    let (descriptions, mutations) = fuzzer.fuzz_headers(url);
+
+    for (description, mutation) in descriptions.iter().zip(mutations.iter()) {
+        let request = http_client::craft_request(method, request_target, DEFAULT_HTTP_VERSION, &mutation, None);
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
+            mutation_description: description.clone(),
             request,
             response,
             response_time,
-            framework: framework.map(|s| s.to_string()),
+            framework: framework.map(|f| f.to_string()),
         });
         fuzzer.request_index += 1;
     }
 }
 
 fn process_mutated_spacings(fuzzer: &mut Fuzzer, method: &str, url: &str, request_target: &str, headers: &BTreeMap<String, String>, framework: Option<&str>, results: &mut Vec<RequestResult>) {
-    let spacing_types = vec![
-        SpacingType::AllSpaces,
-        SpacingType::AllTabs,
-        SpacingType::DoubleSpaces,
-        SpacingType::MultipleSpaces,
-        SpacingType::MixSpacesAndTabs,
-        SpacingType::NullTerminated,
-        SpacingType::MultipleLineBreaks,
-        SpacingType::LeadingTrailingTabs,
-        SpacingType::LeadingTrailingWhitespaces,
-        SpacingType::ControlChars,
-    ];
+    let (descriptions, spacing_types) = (
+        vec![
+            String::from("[spacing] All spaces"),
+            String::from("[spacing] All tabs"),
+            String::from("[spacing] Double spaces"),
+            String::from("[spacing] Multiple spaces"),
+            String::from("[spacing] Null terminated"),
+            String::from("[spacing] Multiple line breaks"),
+            String::from("[spacing] Leading and trailing tabs"),
+            String::from("[spacing] Leading and trailing whitespaces"),
+            String::from("[spacing] BEL and SOH control chars instead of \r\n"),
+        ],
+        vec![
+            SpacingType::AllSpaces,
+            SpacingType::AllTabs,
+            SpacingType::DoubleSpaces,
+            SpacingType::MultipleSpaces,
+            SpacingType::NullTerminated,
+            SpacingType::MultipleLineBreaks,
+            SpacingType::LeadingTrailingTabs,
+            SpacingType::LeadingTrailingWhitespaces,
+            SpacingType::ControlChars,
+        ],
+    );
 
-    for spacing_type in spacing_types {
+    for (description, spacing_type) in descriptions.iter().zip(spacing_types.iter()) {
         let request = http_client::craft_request(method, request_target, DEFAULT_HTTP_VERSION, headers, Some(&spacing_type));
         let (response, response_time) = http_client::send_request(url, &request);
         results.push(RequestResult {
             request_index: fuzzer.request_index,
+            mutation_description: description.clone(),
             request,
             response,
             response_time,
-            framework: framework.map(|s| s.to_string()),
+            framework: framework.map(|f| f.to_string()),
         });
         fuzzer.request_index += 1;
     }

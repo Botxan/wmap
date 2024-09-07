@@ -14,25 +14,6 @@ pub struct Logger {
     formatter: Arc<dyn OutputFormatter + Send + Sync>,
 }
 
-#[derive(Debug, Serialize)]
-pub struct RequestResult {
-    pub request_index: u32,
-    pub request: String,
-    pub response: String,
-    pub response_time: u128,
-    pub framework: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct JSONEntry {
-    pub request_index: u32,
-    pub request: String,
-    pub response: String,
-    pub response_time: u128,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub framework: Option<String>,
-}
-
 impl Logger {
     pub fn init(verbose: bool, output_file: Option<&str>, include_framework: bool, formatter: Arc<dyn OutputFormatter + Send + Sync>) {
         let mut logger = GLOBAL_LOGGER.lock().unwrap();
@@ -108,6 +89,15 @@ impl Logger {
     }
 }
 
+pub fn initialize_logger(matches: &clap::ArgMatches) {
+    let verbose = matches.get_flag("verbose");
+    let output_file = matches.get_one::<String>("output").map(|s| s.as_str());
+    let output_format = matches.get_one::<String>("output-format").unwrap();
+    let formatter = get_formatter(&output_format);
+
+    Logger::init(verbose, output_file, false, formatter);
+}
+
 impl Default for Logger {
     fn default() -> Self {
         Logger {
@@ -156,6 +146,27 @@ pub trait OutputFormatter: Send + Sync {
     fn format(&self, results: &[RequestResult]) -> String;
 }
 
+#[derive(Debug, Serialize)]
+pub struct RequestResult {
+    pub request_index: u32,
+    pub mutation_description: String,
+    pub request: String,
+    pub response: String,
+    pub response_time: u128,
+    pub framework: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct JSONEntry {
+    pub request_index: u32,
+    pub mutation_description: String,
+    pub request: String,
+    pub response: String,
+    pub response_time: u128,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub framework: Option<String>,
+}
+
 pub struct JsonFormatter;
 
 impl OutputFormatter for JsonFormatter {
@@ -177,8 +188,9 @@ impl OutputFormatter for CsvFormatter {
         for result in results {
             writeln!(
                 csv_output,
-                "{},{},{},{},{}",
+                "{},{},{},{},{},{}",
                 result.request_index,
+                result.mutation_description,
                 escape_csv_value(&result.request),
                 escape_csv_value(&result.response),
                 result.response_time,
@@ -224,4 +236,12 @@ fn escape_csv_value(value: &str) -> String {
     }
 
     escaped
+}
+
+fn get_formatter(output_format: &str) -> Arc<dyn OutputFormatter + Send + Sync> {
+    match output_format {
+        "json" => Arc::new(JsonFormatter),
+        "csv" => Arc::new(CsvFormatter),
+        _ => Arc::new(JsonFormatter),
+    }
 }

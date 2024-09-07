@@ -12,13 +12,15 @@ impl Fuzzer {
         Self { methods, request_index }
     }
 
-    pub fn fuzz_http_method(&self, method: &str) -> Vec<String> {
+    pub fn fuzz_http_method(&self, method: &str) -> (Vec<String>, Vec<String>) {
+        let mut mutated_methods_descriptions = Vec::new();
         let mut mutated_methods = Vec::new();
         let method_len = method.len();
 
         // 1. Suppress chars
         for i in 0..method_len {
             let suppressed = self.suppress_char(method, i).unwrap();
+            mutated_methods_descriptions.push(format!("[method] {} -> {}", method, suppressed));
             mutated_methods.push(suppressed);
         }
 
@@ -27,6 +29,7 @@ impl Fuzzer {
             for i in 0..method_len {
                 for j in i + 1..method_len {
                     let swapped = self.swap_chars(method, i, j);
+                    mutated_methods_descriptions.push(format!("[method] {} -> {}", method, swapped));
                     mutated_methods.push(swapped);
                 }
             }
@@ -35,45 +38,64 @@ impl Fuzzer {
         // 3. Add chars
         // Common chars
         let common_chars = vec!['A', 'B'];
-        let added = self.add_chars(method, common_chars);
-        mutated_methods.extend(added);
+        let added_vec = self.add_chars(method, common_chars);
+        for added in added_vec {
+            mutated_methods_descriptions.push(format!("[method] {} -> {}", method, added));
+            mutated_methods.push(added);
+        }
 
         // Unexpected chars
         let unexpected_chars = vec!['$', '@', '!', '1'];
-        let added = self.add_chars(method, unexpected_chars);
-        mutated_methods.extend(added);
+        let added_vec = self.add_chars(method, unexpected_chars);
+        for added in added_vec {
+            mutated_methods_descriptions.push(format!("[method] {} -> {}", method, added));
+            mutated_methods.push(added);
+        }
 
         // Large number of chars
         let large_strings = vec!["#".repeat(1024), "%".repeat(4096)];
-        let added = self.add_chars(method, large_strings);
-        mutated_methods.extend(added);
+        let added_vec = self.add_chars(method, large_strings);
+        for added in added_vec {
+            mutated_methods_descriptions.push(format!("[method] {} -> {}", method, added));
+            mutated_methods.push(added);
+        }
 
         // 4. Modify existing chars
         let replacements = vec![('O', "0"), ('E', "3"), ('A', "@"), ('P', "Ρ"), ('T', "✝")];
-        let replaced = self.replace_chars(method, &replacements);
-        mutated_methods.extend(replaced);
+        let replaced_vec = self.replace_chars(method, &replacements);
+        for replaced in replaced_vec {
+            mutated_methods_descriptions.push(format!("[method] {} -> {}", method, replaced));
+            mutated_methods.push(replaced);
+        }
 
         // 5. Case variations
         // Lowercase
+        mutated_methods_descriptions.push(format!("[method] {} -> {}", method, method.to_lowercase()));
         mutated_methods.push(method.to_lowercase());
 
         // Toggle between upper and lower case letters
         let case_alternated = self.alternate_case(method);
+        mutated_methods_descriptions.push(format!("[method] {} -> {}", method, case_alternated));
         mutated_methods.push(case_alternated);
 
         // 6. Whitespace and formatting
         let with_spaces = self.add_whitespaces_between_chars(method);
+        mutated_methods_descriptions.push(format!("[method] {} -> {}", method, with_spaces));
         mutated_methods.push(with_spaces);
 
         // 7. Concatenated methods
         let appended_methods = vec!["POST", "GET"];
-        let concatenated = self.concatenate_with_methods(method, &appended_methods);
-        mutated_methods.extend(concatenated);
+        let concatenated_vec = self.concatenate_with_methods(method, &appended_methods);
+        for concatenated in concatenated_vec {
+            mutated_methods_descriptions.push(format!("[method] {} -> {}", method, concatenated));
+            mutated_methods.push(concatenated);
+        }
 
-        mutated_methods
+        (mutated_methods_descriptions, mutated_methods)
     }
 
-    pub fn fuzz_request_target(&self, request_target: &str) -> Vec<String> {
+    pub fn fuzz_request_target(&self, request_target: &str) -> (Vec<String>, Vec<String>) {
+        let mut mutated_requests_targets_descriptions = Vec::new();
         let mut mutated_request_targets = Vec::new();
         let request_target_len = request_target.len();
         let (path, resource) = self.extract_path_and_resource(request_target);
@@ -81,6 +103,7 @@ impl Fuzzer {
         // 1. Basic structure manipulation
         // Suppress chars
         if let Some(suppressed) = self.suppress_char(request_target, request_target_len - 1) {
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, suppressed));
             mutated_request_targets.push(suppressed);
         }
 
@@ -88,85 +111,121 @@ impl Fuzzer {
         if let Some(r) = resource {
             let len = r.len();
             if len >= 2 {
-                let swapped = self.swap_chars(&r, 0, len - 1);
-                mutated_request_targets.push(format!("{}/{}", path, swapped));
+                let swapped_resource = self.swap_chars(&r, 0, len - 1);
+                let swapped = format!("{}/{}", path, swapped_resource);
+                mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, swapped));
+                mutated_request_targets.push(swapped);
             }
         }
 
         // Add chars
         let chars = vec!['/', '#', '?', '$', '%'];
         for char in chars {
-            mutated_request_targets.push(format!("{}{}", request_target, char));
+            let added = format!("{}{}", request_target, char);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, added));
+            mutated_request_targets.push(added);
         }
 
-        // Path manipulation
+        // 2. Path manipulation
         // Alter path separator
-        mutated_request_targets.push(request_target.replace("/", "\\"));
+        let altered = request_target.replace("/", "\\");
+        mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, altered));
+        mutated_request_targets.push(altered);
 
         // Path traversal sequences
-        mutated_request_targets.push(format!("{}{}", request_target, "/../"));
-        mutated_request_targets.push(format!("{}{}", request_target, "/../../../../../../../../../../../../../../../../"));
+        let mut path_traversal = format!("{}{}", request_target, "/../");
+        mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, path_traversal));
+        mutated_request_targets.push(path_traversal);
+
+        path_traversal = format!("{}{}", request_target, "/../../../../../../../../../../../../../../../../");
+        mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, path_traversal));
+        mutated_request_targets.push(path_traversal);
 
         // Overlong segments
-        let overlong_segment = "too-long-".repeat(50);
-        mutated_request_targets.push(format!("{}/{}", path, overlong_segment));
+        let overlong_segment = format!("{}/{}", path, "too-long-".repeat(50));
+        mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, overlong_segment));
+        mutated_request_targets.push(overlong_segment);
 
         // Slash padding
-        mutated_request_targets.push(request_target.replace("/", "////"));
+        let slash_padding = request_target.replace("/", "////");
+        mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, slash_padding));
+        mutated_request_targets.push(slash_padding);
 
         // 3. Query string mutations
         let (path, query) = request_target.split_once('?').unwrap_or((request_target, ""));
         if !query.is_empty() {
             // Duplicate query parameter
-            mutated_request_targets.push(format!("{}?{}&{}", path, query, query));
+            let duplicated = format!("{}?{}&{}", path, query, query);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, duplicated));
+            mutated_request_targets.push(duplicated);
 
             // Add unexpected query parameter
-            mutated_request_targets.push(format!("{}?{}&unexpected=1", path, query));
+            let unexpected = format!("{}?{}&unexpected=1", path, query);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, unexpected));
+            mutated_request_targets.push(unexpected);
 
             // Empty query parameter
-            mutated_request_targets.push(format!("{}?{}&param=", path, query));
+            let empty = format!("{}?{}&param=", path, query);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, empty));
+            mutated_request_targets.push(empty);
 
             // Large query parameter values
-            mutated_request_targets.push(format!("{}?{}={}", path, query, "a".repeat(1024)));
+            let long = format!("{}?{}{}", path, query, "a".repeat(1024));
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, long));
+            mutated_request_targets.push(long);
 
             // Special characters in query parameters
-            mutated_request_targets.push(format!("{}?{}=va!ue", path, query));
-            mutated_request_targets.push(format!("{}?{}=<script>alert(1)</script>", path, query));
+            let mut special_chars = format!("{}?{}!", path, query);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, special_chars));
+            mutated_request_targets.push(special_chars);
+
+            special_chars = format!("{}?{}&param=<script>alert(1)</script>", path, query);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, special_chars));
+            mutated_request_targets.push(special_chars);
 
             // Malformed query string
-            mutated_request_targets.push(format!("{}?{}?otherparam=othervalue", path, query));
-            mutated_request_targets.push(format!("{}?{}&", path, query));
+            let mut malformed = format!("{}?{}?otherparam=othervalue", path, query);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, malformed));
+            mutated_request_targets.push(malformed);
+
+            malformed = format!("{}?{}&", path, query);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, malformed));
+            mutated_request_targets.push(malformed);
         }
 
         // 4. Fragment mutations
         if let Some((path, _fragment)) = request_target.split_once('#') {
             // Alter or add fragment
-            mutated_request_targets.push(format!("{}#fragme@nt", path));
-            mutated_request_targets.push(format!("{}#", path));
-            mutated_request_targets.push(format!("{}#{}", path, "longfragment".repeat(1024)));
+            let mut fragment_mutation = format!("{}#fragme@nt", path);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, fragment_mutation));
+            mutated_request_targets.push(fragment_mutation);
+
+            fragment_mutation = format!("{}#", path);
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, fragment_mutation));
+            mutated_request_targets.push(fragment_mutation);
+
+            fragment_mutation = format!("{}#{}", path, "longfragment".repeat(1024));
+            mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, fragment_mutation));
+            mutated_request_targets.push(fragment_mutation);
         }
 
         // 5. Encoding and escaping mutations
         // Slash encoding
-        mutated_request_targets.push(request_target.replace("/", "%2F"));
+        let slash_encoding = request_target.replace("/", "%2F");
+        mutated_requests_targets_descriptions.push(format!("[request_target] {} -> {}", request_target, slash_encoding));
+        mutated_request_targets.push(slash_encoding);
 
-        if !query.is_empty() {
-            // Double URL encoding
-            mutated_request_targets.push(format!("{}?%25{}", path, query));
-
-            // Invalid or incomplete URL encoding
-            mutated_request_targets.push(format!("{}?%G4{}", path, query));
-        }
-
-        mutated_request_targets
+        (mutated_requests_targets_descriptions, mutated_request_targets)
     }
 
-    pub fn fuzz_http_version(&self) -> Vec<String> {
+    pub fn fuzz_http_version(&self, http_version: &str) -> (Vec<String>, Vec<String>) {
+        let mut mutated_versions_descriptions = Vec::new();
         let mut mutated_versions = Vec::new();
 
         // 1. Valid but uncommon versions
         let uncommon_versions = vec!["HTTP/0.9", "HTTP/2.0", "HTTP/3.0"];
         for v in uncommon_versions {
+            mutated_versions_descriptions.push(format!("[http version] {} -> {}", http_version, v.to_string()));
             mutated_versions.push(v.to_string());
         }
 
@@ -179,17 +238,20 @@ impl Fuzzer {
             "HTTP/",      // Empty version number
         ];
         for v in malformed_versions {
+            mutated_versions_descriptions.push(format!("[http version] {} -> {}", http_version, v.to_string()));
             mutated_versions.push(v.to_string());
         }
 
         // 3. Unexpected characters
         let unexpected_char_versions = vec!["HTTP/1.1#", "HTTP/1.1!", "HTTP/1.1@"];
         for v in unexpected_char_versions {
+            mutated_versions_descriptions.push(format!("[http version] {} -> {}", http_version, v.to_string()));
             mutated_versions.push(v.to_string());
         }
 
         // 4. Overlong version
         let overlong_version = format!("HTTP/1.1{}", "A".repeat(1024));
+        mutated_versions_descriptions.push(format!("[http version] {} -> {}", http_version, overlong_version));
         mutated_versions.push(overlong_version);
 
         // 5. Encoding mutations
@@ -199,22 +261,25 @@ impl Fuzzer {
             "%48%54%54%50/1.1", // Full version encoded
         ];
         for v in encoded_versions {
+            mutated_versions_descriptions.push(format!("[http version] {} -> {}", http_version, v.to_string()));
             mutated_versions.push(v.to_string());
         }
 
-        mutated_versions
+        (mutated_versions_descriptions, mutated_versions)
     }
 
-    pub fn fuzz_headers(&self, base_url: &str) -> Vec<BTreeMap<String, String>> {
+    pub fn fuzz_headers(&self, base_url: &str) -> (Vec<String>, Vec<BTreeMap<String, String>>) {
         let normalized_url = http_client::normalize_url(base_url);
         let parsed_url = Url::parse(&normalized_url).expect("Invalid URL format");
         let domain = parsed_url.host_str().unwrap_or("");
 
         let base_headers = http_client::get_default_headers(domain);
 
+        let mut mutated_headers_descriptions = Vec::new();
         let mut mutated_headers = Vec::new();
 
         // 0. Default headers
+        mutated_headers_descriptions.push(format!("[header] Default headers"));
         mutated_headers.push(base_headers.clone());
 
         // 1. User-Agent variations
@@ -230,6 +295,11 @@ impl Fuzzer {
         for user_agent in user_agents {
             let mut headers = base_headers.clone();
             headers.insert("User-Agent".to_string(), user_agent.to_string());
+            mutated_headers_descriptions.push(format!(
+                "[header] User-Agent:{} -> User-Agent:{}",
+                base_headers.get("User-Agent").unwrap_or(&"".to_string()),
+                user_agent
+            ));
             mutated_headers.push(headers);
         }
 
@@ -247,6 +317,7 @@ impl Fuzzer {
         for referer in referers {
             let mut headers = base_headers.clone();
             headers.insert("Referer".to_string(), referer.to_string());
+            mutated_headers_descriptions.push(format!("[header] Referer:{} -> Referer:{}", base_headers.get("Referer").unwrap_or(&"".to_string()), referer));
             mutated_headers.push(headers);
         }
 
@@ -262,6 +333,11 @@ impl Fuzzer {
         for content_type in content_types {
             let mut headers = base_headers.clone();
             headers.insert("Content-Type".to_string(), content_type.to_string());
+            mutated_headers_descriptions.push(format!(
+                "[header] Content-Type:{} -> Content-Type:{}",
+                base_headers.get("Content-Type").unwrap_or(&"".to_string()),
+                content_type
+            ));
             mutated_headers.push(headers);
         }
 
@@ -273,13 +349,13 @@ impl Fuzzer {
             "localhost",       // Localhost
             "127.0.0.1",       // Localhost IP
             &host_custom_port, // Custom port
-            domain,            // Base domain
             &host_subdomain,   // Subdomain
         ];
 
         for host in hosts {
             let mut headers = base_headers.clone();
             headers.insert("Host".to_string(), host.to_string());
+            mutated_headers_descriptions.push(format!("[header] Host:{} -> Host:{}", base_headers.get("Host").unwrap_or(&"".to_string()), host));
             mutated_headers.push(headers);
         }
 
@@ -295,6 +371,11 @@ impl Fuzzer {
         for x_forwarded_for in x_forwarded_for_values {
             let mut headers = base_headers.clone();
             headers.insert("X-Forwarded-For".to_string(), x_forwarded_for.to_string());
+            mutated_headers_descriptions.push(format!(
+                "[header] X-Forwarded-For:{} -> X-Forwarded-For:{}",
+                base_headers.get("X-Forwarded-For").unwrap_or(&"".to_string()),
+                x_forwarded_for
+            ));
             mutated_headers.push(headers);
         }
 
@@ -309,6 +390,7 @@ impl Fuzzer {
         for cookie in cookies {
             let mut headers = base_headers.clone();
             headers.insert("Cookie".to_string(), cookie.to_string());
+            mutated_headers_descriptions.push(format!("[header] Cookie:{} -> Cookie:{}", base_headers.get("Cookie").unwrap_or(&"".to_string()), cookie));
             mutated_headers.push(headers);
         }
 
@@ -323,10 +405,15 @@ impl Fuzzer {
         for authorization in authorizations {
             let mut headers = base_headers.clone();
             headers.insert("Authorization".to_string(), authorization.to_string());
+            mutated_headers_descriptions.push(format!(
+                "[header] Authorization:{} -> Authorization:{}",
+                base_headers.get("Authorization").unwrap_or(&"".to_string()),
+                authorization
+            ));
             mutated_headers.push(headers);
         }
 
-        mutated_headers
+        (mutated_headers_descriptions, mutated_headers)
     }
 
     fn suppress_char(&self, input: &str, i: usize) -> Option<String> {

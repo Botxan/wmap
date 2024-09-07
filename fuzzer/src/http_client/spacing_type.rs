@@ -3,7 +3,6 @@ pub enum SpacingType {
     AllTabs,
     DoubleSpaces,
     MultipleSpaces,
-    MixSpacesAndTabs,
     NullTerminated,
     MultipleLineBreaks,
     LeadingTrailingTabs,
@@ -18,35 +17,20 @@ impl SpacingType {
             SpacingType::AllSpaces => input.replace("\t", " "),
             SpacingType::DoubleSpaces => input.replace(" ", "  "),
             SpacingType::MultipleSpaces => input.replace(" ", "    "),
-            SpacingType::MixSpacesAndTabs => input
-                .chars()
-                .enumerate()
-                .map(|(i, c)| {
-                    if c == ' ' {
-                        if i % 2 == 0 {
-                            '\t'
-                        } else {
-                            ' '
-                        }
-                    } else {
-                        c
-                    }
-                })
-                .collect(),
             SpacingType::NullTerminated => input.replace("\r\n", "\0\r\n"),
             SpacingType::MultipleLineBreaks => input.replace("\r\n", "\r\n\r\n"),
             SpacingType::LeadingTrailingTabs => {
                 let mut result = String::new();
-                result.push_str(" ");
+                result.push_str("\t");
                 result.push_str(input);
-                result.push_str(" ");
+                result.push_str("\t");
                 result
             }
             SpacingType::LeadingTrailingWhitespaces => {
                 let mut result = String::new();
-                result.push_str("\t");
+                result.push_str(" ");
                 result.push_str(input);
-                result.push_str("\t");
+                result.push_str(" ");
                 result
             }
             SpacingType::ControlChars => input
